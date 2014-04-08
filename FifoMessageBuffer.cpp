@@ -28,7 +28,7 @@ FifoMessageBuffer::FifoMessageBuffer(char * bufPtr, short bufSize) {
 }
 
 FifoMessageBuffer::FifoMessageBuffer(short bufSize) {
-  m_buffer = malloc(bufSize + 1);
+  char * bufPtr = (char *)malloc(bufSize + 1);
   m_freeBufferOnDestructor = true;
   initForBuffer(bufPtr, (bufSize + 1));
 }
@@ -50,7 +50,15 @@ short FifoMessageBuffer::add(char aChar) {
   }
   else if (aChar == '\0') {
     return 0; // no NULL characters will be added.
-  } else { // room for another character
+  }
+  else if (m_firstCharacter == NULL) {
+    m_firstCharacter = m_buffer;
+    *m_firstCharacter = aChar;
+    m_length = 1;
+    *(m_firstCharacter+1) = '\0';
+    return 1;
+  }
+  else { // room for another character
     char * nextPtr = m_firstCharacter + m_length;
     if (nextPtr >= m_pastRawBuffer) {
       nextPtr = m_buffer; // wrapped to start
@@ -61,6 +69,7 @@ short FifoMessageBuffer::add(char aChar) {
     if (nextPtr >= m_pastRawBuffer) {
       nextPtr = m_buffer; // wrapped to start
     }
+    ++m_length;
     *nextPtr = '\0';
     return 1;
   }
@@ -84,12 +93,16 @@ short FifoMessageBuffer::add(char * src, short length) {
   short add_count = 0;
   int srcPos = 0;
   for ( ; srcPos<length; ++srcPos ) {
-    add_count = add(srcString[srcPos]);
+    add_count = add(src[srcPos]);
     if (add_count == 0) {
       return srcPos;
     }
   }
   return srcPos;
+}
+
+short FifoMessageBuffer::available() { // Number of character slots available.
+  return (m_bufSize - m_length);
 }
 
 // Clear the buffer. Return the number of characters removed.
@@ -112,7 +125,7 @@ short FifoMessageBuffer::clear(short count) {
   else { // count < m_length
     m_firstCharacter += count;
     if (m_firstCharacter >= m_pastRawBuffer) {
-      m_firstCharacter = m_buffer  + (nextPtr - m_pastRawBuffer);
+      m_firstCharacter = m_buffer  + (m_firstCharacter - m_pastRawBuffer);
     }
     return count;
   }
@@ -136,10 +149,10 @@ short FifoMessageBuffer::find(char aChar) {
   return -1;
 }
 
-void FifoMessageBuffer::initForBuffer(char * bufPtr, bufSize) {
+void FifoMessageBuffer::initForBuffer(char * bufPtr, short bufSize) {
   m_bufSize = bufSize - 1;
   m_buffer = bufPtr;
-  m_pastRawBuffer + (m_bufSize + 1);
+  m_pastRawBuffer = m_buffer + (m_bufSize + 1);
   m_firstCharacter = NULL;
   m_length = 0;
 }
@@ -172,8 +185,9 @@ short FifoMessageBuffer::pop(char *dst, short dst_length) {
     return 0;
   }
   else {
+    short nextPos = 0;
     short transfer_count = (m_length < dst_length) ? m_length : (dst_length-1);
-    for ( short nextPos = 0; nextPos<transfer_count; ++nextPos ) {
+    for ( ; nextPos<transfer_count; ++nextPos ) {
       dst[nextPos] = *m_firstCharacter;
       ++m_firstCharacter;
       if (m_firstCharacter >= m_pastRawBuffer) {
@@ -181,12 +195,12 @@ short FifoMessageBuffer::pop(char *dst, short dst_length) {
       }
     }
     dst[nextPos] = '\0';
+    return transfer_count;
   }
-  return transfer_count;
 }
 
 // pop dst_length characters if possible. dst is NULL terminated. Return the number of characters copied and removed.
-short pop(short length, char *dst, short dst_length) {
+short FifoMessageBuffer::pop(short length, char *dst, short dst_length) {
   if (dst_length < 1) {
     return 0;
   }
@@ -195,11 +209,12 @@ short pop(short length, char *dst, short dst_length) {
     return 0;
   }
   else {
+    short nextPos = 0;
     short transfer_count = (length < dst_length) ? length : (dst_length-1);
     if (transfer_count > m_length) {
       transfer_count = m_length;
     }
-    for ( short nextPos = 0; nextPos<transfer_count; ++nextPos ) {
+    for ( ; nextPos<transfer_count; ++nextPos ) {
       dst[nextPos] = *m_firstCharacter;
       ++m_firstCharacter;
       if (m_firstCharacter >= m_pastRawBuffer) {
@@ -207,7 +222,7 @@ short pop(short length, char *dst, short dst_length) {
       }
     }
     dst[nextPos] = '\0';
+    return transfer_count;
   }
-  return transfer_count;
 }
 
